@@ -1,0 +1,25 @@
+name: Build and test
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - jazzy
+      - jazzy_dev
+  pull_request:
+    branches:
+      - jazzy
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+    container:
+      image: ros:jazzy-ros-core
+    steps:
+      - uses: ros-tooling/setup-ros@v0.7
+      - uses: ros-tooling/action-ros-ci@v0.3
+        with:
+          target-ros2-distro: jazzy
+          skip-tests: false
+          rosdep-check: true
+          package-name: cmeresearch_robot_state
