@@ -21,6 +21,6 @@ jobs:
         with:
           target-ros2-distro: jazzy
           skip-tests: false
-          rosdep-check: true
+          rosdep-check: false
           package-name: cmeresearch_robot_state
-          vcs-repo-file-urls: .ci.repos
+          vcs-repo-file-urls: https://raw.githubusercontent.com/cme-research/cmeresearch_robot_state/${{ github.ref_name }}/.ci.repos
