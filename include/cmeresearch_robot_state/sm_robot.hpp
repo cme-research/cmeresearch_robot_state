@@ -79,7 +79,7 @@ struct StateInitializing : public smacc2::SmaccState<StateInitializing, SmRobot>
   }
 
   typedef boost::mpl::list<
-    smacc2::Transition<EvStateFinished, StateIdle>
+      smacc2::Transition<EvStateFinished, StateIdle>
   > reactions;
 
   static void staticConfigure() {}
@@ -106,8 +106,8 @@ struct StateIdle : public smacc2::SmaccState<StateIdle, SmRobot>
   }
 
   typedef boost::mpl::list<
-    smacc2::Transition<EvMissionStart, StateMoving>,
-    smacc2::Transition<EvEmergencyStop, StateEmergencyStop>
+      smacc2::Transition<EvMissionStart, StateMoving>,
+      smacc2::Transition<EvEmergencyStop, StateEmergencyStop>
   > reactions;
 
   static void staticConfigure() {}
@@ -131,8 +131,8 @@ struct StateMoving : public smacc2::SmaccState<StateMoving, SmRobot>
   }
 
   typedef boost::mpl::list<
-    smacc2::Transition<EvStateFinished, StateIdle>,
-    smacc2::Transition<EvEmergencyStop, StateEmergencyStop>
+      smacc2::Transition<EvStateFinished, StateIdle>,
+      smacc2::Transition<EvEmergencyStop, StateEmergencyStop>
   > reactions;
 
   static void staticConfigure() {}
@@ -156,7 +156,7 @@ struct StateEmergencyStop : public smacc2::SmaccState<StateEmergencyStop, SmRobo
   }
 
   typedef boost::mpl::list<
-    smacc2::Transition<EvReset, StateInitializing>
+      smacc2::Transition<EvReset, StateInitializing>
   > reactions;
 
   static void staticConfigure() {}
