@@ -6,13 +6,14 @@
 #include <std_msgs/msg/string.hpp>
 #include <cmeresearch_msgs/msg/robot_state.hpp>
 
-namespace cmeresearch_robot_state {
+namespace cmeresearch_robot_state
+{
 
 // EVENTS
-struct EvStateFinished  : sc::event<EvStateFinished>  {};
-struct EvMissionStart   : sc::event<EvMissionStart>   {};
-struct EvEmergencyStop  : sc::event<EvEmergencyStop>  {};
-struct EvReset          : sc::event<EvReset>          {};
+struct EvStateFinished : sc::event<EvStateFinished> {};
+struct EvMissionStart : sc::event<EvMissionStart> {};
+struct EvEmergencyStop : sc::event<EvEmergencyStop> {};
+struct EvReset : sc::event<EvReset> {};
 
 // STATES
 struct StateInitializing;
@@ -21,13 +22,15 @@ struct StateMoving;
 struct StateEmergencyStop;
 
 // STATE MACHINE
-struct SmRobot : public smacc2::SmaccStateMachineBase<SmRobot, StateInitializing> {
+struct SmRobot : public smacc2::SmaccStateMachineBase<SmRobot, StateInitializing>
+{
   using SmaccStateMachineBase::SmaccStateMachineBase;
 
   rclcpp::Publisher<cmeresearch_msgs::msg::RobotState>::SharedPtr state_pub_;
   rclcpp::Subscription<std_msgs::msg::String>::SharedPtr cmd_sub_;
 
-  void onInitialize() override {
+  void onInitialize() override
+  {
     RCLCPP_INFO(getLogger(), "SmRobot: Initializing...");
 
     state_pub_ = getNode()->create_publisher<cmeresearch_msgs::msg::RobotState>(
@@ -47,27 +50,31 @@ struct SmRobot : public smacc2::SmaccStateMachineBase<SmRobot, StateInitializing
       });
   }
 
-  void publishState(const std::string & state_name) {
-    if (!state_pub_) return;
+  void publishState(const std::string & state_name)
+  {
+    if (!state_pub_) {return;}
     cmeresearch_msgs::msg::RobotState msg;
     msg.header.stamp = getNode()->get_clock()->now();
     msg.header.frame_id = "robot";
     msg.state = state_name;
     state_pub_->publish(msg);
-    RCLCPP_INFO(getLogger(), "State → %s", state_name.c_str());
+    RCLCPP_INFO(getLogger(), "State -> %s", state_name.c_str());
   }
 };
 
 // INITIALIZING STATE
-struct StateInitializing : public smacc2::SmaccState<StateInitializing, SmRobot> {
+struct StateInitializing : public smacc2::SmaccState<StateInitializing, SmRobot>
+{
   using SmaccState::SmaccState;
 
-  void onEntry() {
+  void onEntry()
+  {
     RCLCPP_INFO(getLogger(), "Entering Initializing State");
     dynamic_cast<SmRobot &>(this->getStateMachine()).publishState("initializing");
   }
 
-  void onExit() {
+  void onExit()
+  {
     RCLCPP_INFO(getLogger(), "Exiting Initializing State");
   }
 
@@ -76,26 +83,30 @@ struct StateInitializing : public smacc2::SmaccState<StateInitializing, SmRobot>
   > reactions;
 
   static void staticConfigure() {}
-  void runtimeConfigure() {
+  void runtimeConfigure()
+  {
     postEvent<EvStateFinished>();
   }
 };
 
 // IDLE STATE
-struct StateIdle : public smacc2::SmaccState<StateIdle, SmRobot> {
+struct StateIdle : public smacc2::SmaccState<StateIdle, SmRobot>
+{
   using SmaccState::SmaccState;
 
-  void onEntry() {
+  void onEntry()
+  {
     RCLCPP_INFO(getLogger(), "Entering Idle State");
     dynamic_cast<SmRobot &>(this->getStateMachine()).publishState("idle");
   }
 
-  void onExit() {
+  void onExit()
+  {
     RCLCPP_INFO(getLogger(), "Exiting Idle State");
   }
 
   typedef boost::mpl::list<
-    smacc2::Transition<EvMissionStart,  StateMoving>,
+    smacc2::Transition<EvMissionStart, StateMoving>,
     smacc2::Transition<EvEmergencyStop, StateEmergencyStop>
   > reactions;
 
@@ -104,21 +115,24 @@ struct StateIdle : public smacc2::SmaccState<StateIdle, SmRobot> {
 };
 
 // MOVING STATE
-struct StateMoving : public smacc2::SmaccState<StateMoving, SmRobot> {
+struct StateMoving : public smacc2::SmaccState<StateMoving, SmRobot>
+{
   using SmaccState::SmaccState;
 
-  void onEntry() {
+  void onEntry()
+  {
     RCLCPP_INFO(getLogger(), "Entering Moving State");
     dynamic_cast<SmRobot &>(this->getStateMachine()).publishState("moving");
   }
 
-  void onExit() {
+  void onExit()
+  {
     RCLCPP_INFO(getLogger(), "Exiting Moving State");
   }
 
   typedef boost::mpl::list<
-    smacc2::Transition<EvStateFinished,  StateIdle>,
-    smacc2::Transition<EvEmergencyStop,  StateEmergencyStop>
+    smacc2::Transition<EvStateFinished, StateIdle>,
+    smacc2::Transition<EvEmergencyStop, StateEmergencyStop>
   > reactions;
 
   static void staticConfigure() {}
@@ -126,15 +140,18 @@ struct StateMoving : public smacc2::SmaccState<StateMoving, SmRobot> {
 };
 
 // EMERGENCY STOP STATE
-struct StateEmergencyStop : public smacc2::SmaccState<StateEmergencyStop, SmRobot> {
+struct StateEmergencyStop : public smacc2::SmaccState<StateEmergencyStop, SmRobot>
+{
   using SmaccState::SmaccState;
 
-  void onEntry() {
+  void onEntry()
+  {
     RCLCPP_ERROR(getLogger(), "EMERGENCY STOP");
     dynamic_cast<SmRobot &>(this->getStateMachine()).publishState("emergency_stop");
   }
 
-  void onExit() {
+  void onExit()
+  {
     RCLCPP_INFO(getLogger(), "Exiting Emergency Stop State");
   }
 
@@ -146,6 +163,6 @@ struct StateEmergencyStop : public smacc2::SmaccState<StateEmergencyStop, SmRobo
   void runtimeConfigure() {}
 };
 
-} // namespace cmeresearch_robot_state
+}  // namespace cmeresearch_robot_state
 
-#endif // SM_ROBOT_HPP
+#endif  // SM_ROBOT_HPP

@@ -17,7 +17,7 @@ find_package(Boost REQUIRED COMPONENTS thread)
 include_directories(include)
 
 add_executable(sm_robot_node src/sm_robot_node.cpp)
-target_link_libraries(sm_robot_node 
+target_link_libraries(sm_robot_node
   ${Boost_LIBRARIES}
 )
 
