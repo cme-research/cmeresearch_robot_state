@@ -68,9 +68,16 @@ struct SmRobot : public smacc2::SmaccStateMachineBase<SmRobot, StateInitializing
       auto sub = getNode()->create_subscription<std_msgs::msg::String>(
         topic, driver_qos,
         [this, topic](const std_msgs::msg::String::SharedPtr msg) {
+          const std::string prev = driver_states_[topic];
           driver_states_[topic] = msg->data;
           RCLCPP_INFO(getLogger(), "Driver [%s]: %s", topic.c_str(), msg->data.c_str());
-          checkDriversAndPost();
+          if (msg->data == "low_voltage" && prev != "low_voltage") {
+            RCLCPP_ERROR(getLogger(), "Low voltage on [%s] — triggering emergency stop", topic.c_str());
+            publishState("emergency_stop");
+            this->postEvent<EvEmergencyStop>();
+          } else {
+            checkDriversAndPost();
+          }
         });
       driver_subs_.push_back(sub);
     }
@@ -84,12 +91,14 @@ struct SmRobot : public smacc2::SmaccStateMachineBase<SmRobot, StateInitializing
         publishState("driver_error");
         return;
       }
-      if (kv.second != "initialized") {
+      if (kv.second != "initialized" && kv.second != "idle") {
         return;
       }
     }
-    RCLCPP_INFO(getLogger(), "All drivers initialized, transitioning to idle");
-    this->postEvent<EvStateFinished>();
+    if (!driver_states_.empty()) {
+      RCLCPP_INFO(getLogger(), "All drivers ready, transitioning to idle");
+      this->postEvent<EvStateFinished>();
+    }
   }
 
   void publishState(const std::string & state_name)
@@ -99,6 +108,12 @@ struct SmRobot : public smacc2::SmaccStateMachineBase<SmRobot, StateInitializing
     msg.header.stamp = getNode()->get_clock()->now();
     msg.header.frame_id = "robot";
     msg.state = state_name;
+    for (const auto & topic : DRIVER_STATE_TOPICS) {
+      const std::string short_name = topic.substr(topic.rfind('/') + 1);
+      msg.driver_names.push_back(short_name);
+      const auto it = driver_states_.find(topic);
+      msg.driver_states.push_back(it != driver_states_.end() ? it->second : "unknown");
+    }
     state_pub_->publish(msg);
     RCLCPP_INFO(getLogger(), "State -> %s", state_name.c_str());
   }
