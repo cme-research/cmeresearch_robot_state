@@ -1,6 +1,10 @@
 #ifndef SM_ROBOT_HPP
 #define SM_ROBOT_HPP
 
+#include <map>
+#include <string>
+#include <vector>
+
 #include <smacc2/smacc.hpp>
 #include <boost/mpl/list.hpp>
 #include <std_msgs/msg/string.hpp>
@@ -21,6 +25,13 @@ struct StateIdle;
 struct StateMoving;
 struct StateEmergencyStop;
 
+static const std::vector<std::string> DRIVER_STATE_TOPICS = {
+  "/cmexa_base/front_left/state",
+  "/cmexa_base/front_right/state",
+  "/cmexa_base/rear_left/state",
+  "/cmexa_base/rear_right/state",
+};
+
 // STATE MACHINE
 struct SmRobot : public smacc2::SmaccStateMachineBase<SmRobot, StateInitializing>
 {
@@ -28,6 +39,8 @@ struct SmRobot : public smacc2::SmaccStateMachineBase<SmRobot, StateInitializing
 
   rclcpp::Publisher<cmeresearch_msgs::msg::RobotState>::SharedPtr state_pub_;
   rclcpp::Subscription<std_msgs::msg::String>::SharedPtr cmd_sub_;
+  std::vector<rclcpp::Subscription<std_msgs::msg::String>::SharedPtr> driver_subs_;
+  std::map<std::string, std::string> driver_states_;
 
   void onInitialize() override
   {
@@ -48,6 +61,35 @@ struct SmRobot : public smacc2::SmaccStateMachineBase<SmRobot, StateInitializing
           this->postEvent<EvReset>();
         }
       });
+
+    const rclcpp::QoS driver_qos = rclcpp::QoS(1).transient_local();
+    for (const auto & topic : DRIVER_STATE_TOPICS) {
+      driver_states_[topic] = "";
+      auto sub = getNode()->create_subscription<std_msgs::msg::String>(
+        topic, driver_qos,
+        [this, topic](const std_msgs::msg::String::SharedPtr msg) {
+          driver_states_[topic] = msg->data;
+          RCLCPP_INFO(getLogger(), "Driver [%s]: %s", topic.c_str(), msg->data.c_str());
+          checkDriversAndPost();
+        });
+      driver_subs_.push_back(sub);
+    }
+  }
+
+  void checkDriversAndPost()
+  {
+    for (const auto & kv : driver_states_) {
+      if (kv.second == "error") {
+        RCLCPP_ERROR(getLogger(), "Driver error on [%s], staying in initializing", kv.first.c_str());
+        publishState("driver_error");
+        return;
+      }
+      if (kv.second != "initialized") {
+        return;
+      }
+    }
+    RCLCPP_INFO(getLogger(), "All drivers initialized, transitioning to idle");
+    this->postEvent<EvStateFinished>();
   }
 
   void publishState(const std::string & state_name)
@@ -69,7 +111,7 @@ struct StateInitializing : public smacc2::SmaccState<StateInitializing, SmRobot>
 
   void onEntry()
   {
-    RCLCPP_INFO(getLogger(), "Entering Initializing State");
+    RCLCPP_INFO(getLogger(), "Entering Initializing State — waiting for all 4 drivers");
     dynamic_cast<SmRobot &>(this->getStateMachine()).publishState("initializing");
   }
 
@@ -85,7 +127,7 @@ struct StateInitializing : public smacc2::SmaccState<StateInitializing, SmRobot>
   static void staticConfigure() {}
   void runtimeConfigure()
   {
-    postEvent<EvStateFinished>();
+    dynamic_cast<SmRobot &>(this->getStateMachine()).checkDriversAndPost();
   }
 };
 
