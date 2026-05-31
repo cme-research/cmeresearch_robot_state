@@ -13,6 +13,9 @@
   <depend>smacc2</depend>
   <depend>smacc2_msgs</depend>
   <depend>std_msgs</depend>
+  <depend>action_msgs</depend>
+  <depend>rclcpp_action</depend>
+  <depend>nav2_msgs</depend>
   <depend>cmeresearch_msgs</depend>
   <build_depend>libboost-thread-dev</build_depend>
 
