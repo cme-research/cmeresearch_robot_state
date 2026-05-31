@@ -21,6 +21,10 @@ def generate_test_description():
             executable='sm_robot_node',
             name='sm_robot',
             output='screen',
+            # Skip driver readiness gating in unit tests — the test fixture
+            # never spins up tinkerforge driver mocks, so without this the SM
+            # would block in Initializing until the (default 30 s) timeout.
+            parameters=[{'driver_topics': []}],
         ),
         launch_testing.actions.ReadyToTest(),
     ])
