@@ -1,7 +1,9 @@
 #ifndef SM_ROBOT_HPP
 #define SM_ROBOT_HPP
 
+#include <chrono>
 #include <map>
+#include <sstream>
 #include <string>
 #include <vector>
 
@@ -25,12 +27,33 @@ struct StateIdle;
 struct StateMoving;
 struct StateEmergencyStop;
 
-static const std::vector<std::string> DRIVER_STATE_TOPICS = {
+static const std::vector<std::string> DEFAULT_DRIVER_STATE_TOPICS = {
   "/cmexa_base/front_left/state",
   "/cmexa_base/front_right/state",
   "/cmexa_base/rear_left/state",
   "/cmexa_base/rear_right/state",
 };
+
+// Returns the second-to-last `/`-separated segment of `topic`.
+// For "/cmexa_base/front_left/state" → "front_left". Used to populate
+// RobotState.driver_names with the wheel identifier instead of the trailing
+// "/state" leaf, which is what consumers (e.g. the webapp's robot-state
+// panel) actually need to label each driver row.
+inline std::string wheel_name_from_topic(const std::string & topic)
+{
+  std::vector<std::string> segments;
+  std::stringstream ss(topic);
+  std::string seg;
+  while (std::getline(ss, seg, '/')) {
+    if (!seg.empty()) {
+      segments.push_back(seg);
+    }
+  }
+  if (segments.size() >= 2) {
+    return segments[segments.size() - 2];
+  }
+  return topic;
+}
 
 // STATE MACHINE
 struct SmRobot : public smacc2::SmaccStateMachineBase<SmRobot, StateInitializing>
@@ -41,15 +64,31 @@ struct SmRobot : public smacc2::SmaccStateMachineBase<SmRobot, StateInitializing
   rclcpp::Subscription<std_msgs::msg::String>::SharedPtr cmd_sub_;
   std::vector<rclcpp::Subscription<std_msgs::msg::String>::SharedPtr> driver_subs_;
   std::map<std::string, std::string> driver_states_;
+  std::vector<std::string> driver_topics_;
+  rclcpp::TimerBase::SharedPtr init_timeout_timer_;
+  bool initialization_complete_ = false;
+  double init_timeout_sec_ = 30.0;
 
   void onInitialize() override
   {
     RCLCPP_INFO(getLogger(), "SmRobot: Initializing...");
 
-    state_pub_ = getNode()->create_publisher<cmeresearch_msgs::msg::RobotState>(
+    auto node = getNode();
+    // `driver_topics` lets sim / dev workspaces override the 4 hardware stepper
+    // driver state topics — pass `[]` to skip readiness gating entirely so the
+    // state machine reaches Idle and publishes RobotState even when no
+    // tinkerforge drivers are around (e.g. in Webots sim).
+    driver_topics_ = node->declare_parameter<std::vector<std::string>>(
+      "driver_topics", DEFAULT_DRIVER_STATE_TOPICS);
+    // `init_timeout_sec` is the hard cap on how long we wait for all
+    // configured drivers to report `initialized`/`idle` before forcing a
+    // transition to Idle anyway. Set to 0 to disable the timeout.
+    init_timeout_sec_ = node->declare_parameter<double>("init_timeout_sec", 30.0);
+
+    state_pub_ = node->create_publisher<cmeresearch_msgs::msg::RobotState>(
       "/robot_state", rclcpp::QoS(1).transient_local());
 
-    cmd_sub_ = getNode()->create_subscription<std_msgs::msg::String>(
+    cmd_sub_ = node->create_subscription<std_msgs::msg::String>(
       "/robot_cmd", 10,
       [this](const std_msgs::msg::String::SharedPtr msg) {
         RCLCPP_INFO(getLogger(), "Received command: %s", msg->data.c_str());
@@ -63,9 +102,9 @@ struct SmRobot : public smacc2::SmaccStateMachineBase<SmRobot, StateInitializing
       });
 
     const rclcpp::QoS driver_qos = rclcpp::QoS(1).transient_local();
-    for (const auto & topic : DRIVER_STATE_TOPICS) {
+    for (const auto & topic : driver_topics_) {
       driver_states_[topic] = "";
-      auto sub = getNode()->create_subscription<std_msgs::msg::String>(
+      auto sub = node->create_subscription<std_msgs::msg::String>(
         topic, driver_qos,
         [this, topic](const std_msgs::msg::String::SharedPtr msg) {
           const std::string prev = driver_states_[topic];
@@ -81,10 +120,47 @@ struct SmRobot : public smacc2::SmaccStateMachineBase<SmRobot, StateInitializing
         });
       driver_subs_.push_back(sub);
     }
+
+    if (init_timeout_sec_ > 0.0) {
+      const auto period =
+        std::chrono::milliseconds(static_cast<int64_t>(init_timeout_sec_ * 1000.0));
+      init_timeout_timer_ = node->create_wall_timer(
+        period,
+        [this]() {
+          if (initialization_complete_) {
+            init_timeout_timer_.reset();
+            return;
+          }
+          RCLCPP_WARN(getLogger(),
+            "Init timeout (%.1fs) reached before all drivers reported ready — "
+            "forcing transition to idle. Driver states:", init_timeout_sec_);
+          for (const auto & kv : driver_states_) {
+            RCLCPP_WARN(getLogger(), "  %s = '%s'",
+              kv.first.c_str(),
+              kv.second.empty() ? "<no message>" : kv.second.c_str());
+          }
+          initialization_complete_ = true;
+          this->postEvent<EvStateFinished>();
+          init_timeout_timer_.reset();
+        });
+    }
+
+    // Empty driver list means there is nothing to wait for; flip to Idle
+    // immediately so RobotState publishes can flow.
+    checkDriversAndPost();
   }
 
   void checkDriversAndPost()
   {
+    if (initialization_complete_) {
+      return;
+    }
+    if (driver_topics_.empty()) {
+      RCLCPP_INFO(getLogger(), "No driver topics configured, transitioning to idle");
+      initialization_complete_ = true;
+      this->postEvent<EvStateFinished>();
+      return;
+    }
     for (const auto & kv : driver_states_) {
       if (kv.second == "error") {
         RCLCPP_ERROR(getLogger(), "Driver error on [%s], staying in initializing", kv.first.c_str());
@@ -95,10 +171,9 @@ struct SmRobot : public smacc2::SmaccStateMachineBase<SmRobot, StateInitializing
         return;
       }
     }
-    if (!driver_states_.empty()) {
-      RCLCPP_INFO(getLogger(), "All drivers ready, transitioning to idle");
-      this->postEvent<EvStateFinished>();
-    }
+    RCLCPP_INFO(getLogger(), "All drivers ready, transitioning to idle");
+    initialization_complete_ = true;
+    this->postEvent<EvStateFinished>();
   }
 
   void publishState(const std::string & state_name)
@@ -108,9 +183,8 @@ struct SmRobot : public smacc2::SmaccStateMachineBase<SmRobot, StateInitializing
     msg.header.stamp = getNode()->get_clock()->now();
     msg.header.frame_id = "robot";
     msg.state = state_name;
-    for (const auto & topic : DRIVER_STATE_TOPICS) {
-      const std::string short_name = topic.substr(topic.rfind('/') + 1);
-      msg.driver_names.push_back(short_name);
+    for (const auto & topic : driver_topics_) {
+      msg.driver_names.push_back(wheel_name_from_topic(topic));
       const auto it = driver_states_.find(topic);
       msg.driver_states.push_back(it != driver_states_.end() ? it->second : "unknown");
     }
