@@ -23,4 +23,4 @@ jobs:
           skip-tests: false
           rosdep-check: false
           package-name: cmeresearch_msgs cmeresearch_robot_state
-          vcs-repo-file-url: https://raw.githubusercontent.com/cme-research/cmeresearch_robot_state/${{ github.ref_name }}/.ci.repos
+          vcs-repo-file-url: https://raw.githubusercontent.com/cme-research/cmeresearch_robot_state/${{ github.head_ref || github.ref_name }}/.ci.repos
