@@ -5,12 +5,10 @@ import unittest
 from cmeresearch_msgs.msg import RobotState
 import launch
 import launch_ros.actions
-from launch_ros.parameter_descriptions import ParameterValue
 import launch_testing
 import launch_testing.actions
 import pytest
 import rclpy
-from rclpy.parameter import Parameter
 from rclpy.qos import DurabilityPolicy, QoSProfile, ReliabilityPolicy
 from std_msgs.msg import String
 
@@ -23,15 +21,11 @@ def generate_test_description():
             executable='sm_robot_node',
             name='sm_robot',
             output='screen',
-            # Skip driver readiness gating in unit tests — the test fixture
-            # never spins up tinkerforge driver mocks, so without this the SM
-            # would block in Initializing until the (default 30 s) timeout.
-            # Empty Python lists can't infer their element type, so we wrap in
-            # ParameterValue with an explicit STRING_ARRAY type.
-            parameters=[{
-                'driver_topics': ParameterValue(
-                    [], value_type=Parameter.Type.STRING_ARRAY),
-            }],
+            # The test fixture never spins up tinkerforge driver mocks, so the
+            # SM would block in Initializing for the default 30 s timeout. Drop
+            # the timeout to 0.5 s so the SM falls back to idle quickly and the
+            # rest of the state-transition tests can run.
+            parameters=[{'init_timeout_sec': 0.5}],
         ),
         launch_testing.actions.ReadyToTest(),
     ])
