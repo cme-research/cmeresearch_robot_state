@@ -38,10 +38,14 @@ static bool read_cpu_jiffies(long & idle, long & total)
   std::string label;
   std::vector<long> vals(10, 0);
   f >> label;
-  for (auto & v : vals) {f >> v;}
+  for (auto & v : vals) {
+    f >> v;
+  }
   idle = vals[3] + vals[4];
   total = 0;
-  for (auto v : vals) {total += v;}
+  for (auto v : vals) {
+    total += v;
+  }
   return true;
 }
 
@@ -203,9 +207,9 @@ public:
     // Identification fields don't change at runtime — read once, copy into
     // every periodic sample so MQTT retain keeps them visible to late
     // subscribers.
-    os_pretty_name_  = read_os_pretty_name();
-    kernel_release_  = read_kernel_release();
-    hardware_model_  = read_hardware_model();
+    os_pretty_name_ = read_os_pretty_name();
+    kernel_release_ = read_kernel_release();
+    hardware_model_ = read_hardware_model();
 
     pub_ = create_publisher<cmeresearch_msgs::msg::SystemStats>(
       "/system_stats", rclcpp::QoS(10).transient_local());
