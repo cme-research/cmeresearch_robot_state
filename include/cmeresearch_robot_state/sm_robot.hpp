@@ -122,32 +122,50 @@ struct SmRobot : public smacc2::SmaccStateMachineBase<SmRobot, StateInitializing
       driver_subs_.push_back(sub);
     }
 
-    if (init_timeout_sec_ > 0.0) {
-      const auto period =
-        std::chrono::milliseconds(static_cast<int64_t>(init_timeout_sec_ * 1000.0));
-      init_timeout_timer_ = node->create_wall_timer(
-        period,
-        [this]() {
-          if (initialization_complete_) {
-            init_timeout_timer_.reset();
-            return;
-          }
-          RCLCPP_WARN(getLogger(),
-            "Init timeout (%.1fs) reached before all drivers reported ready — "
-            "forcing transition to idle. Driver states:", init_timeout_sec_);
-          for (const auto & kv : driver_states_) {
-            RCLCPP_WARN(getLogger(), "  %s = '%s'",
-              kv.first.c_str(),
-              kv.second.empty() ? "<no message>" : kv.second.c_str());
-          }
-          initialization_complete_ = true;
-          this->postEvent<EvStateFinished>();
-          init_timeout_timer_.reset();
-        });
-    }
+    // First-time entry into the Initializing state on bringup.
+    beginInitialization();
+  }
 
-    // Empty driver list means there is nothing to wait for; flip to Idle
-    // immediately so RobotState publishes can flow.
+  // Arm (or re-arm) the init timeout backstop. Idempotent — cancels any
+  // previously running timer first so a reset->Initializing re-entry gets
+  // a fresh `init_timeout_sec_` window rather than firing immediately on
+  // the stale handle.
+  void armInitTimeout()
+  {
+    init_timeout_timer_.reset();
+    if (init_timeout_sec_ <= 0.0) {
+      return;
+    }
+    const auto period =
+      std::chrono::milliseconds(static_cast<int64_t>(init_timeout_sec_ * 1000.0));
+    init_timeout_timer_ = getNode()->create_wall_timer(
+      period,
+      [this]() {
+        if (initialization_complete_) {
+          init_timeout_timer_.reset();
+          return;
+        }
+        RCLCPP_WARN(getLogger(),
+          "Init timeout (%.1fs) reached before all drivers reported ready — "
+          "forcing transition to idle. Driver states:", init_timeout_sec_);
+        for (const auto & kv : driver_states_) {
+          RCLCPP_WARN(getLogger(), "  %s = '%s'",
+            kv.first.c_str(),
+            kv.second.empty() ? "<no message>" : kv.second.c_str());
+        }
+        initialization_complete_ = true;
+        this->postEvent<EvStateFinished>();
+        init_timeout_timer_.reset();
+      });
+  }
+
+  // Reset the readiness latch, arm the timer, and immediately try to
+  // transition out. Called both from `onInitialize` (first entry) and
+  // from `StateInitializing::runtimeConfigure` (re-entry after reset).
+  void beginInitialization()
+  {
+    initialization_complete_ = false;
+    armInitTimeout();
     checkDriversAndPost();
   }
 
@@ -218,7 +236,12 @@ struct StateInitializing : public smacc2::SmaccState<StateInitializing, SmRobot>
   static void staticConfigure() {}
   void runtimeConfigure()
   {
-    dynamic_cast<SmRobot &>(this->getStateMachine()).checkDriversAndPost();
+    // Re-arm the timeout backstop and reset the readiness latch on every
+    // entry. Without this the Initializing state is one-shot — on a
+    // reset->Initializing re-entry, `initialization_complete_` stays
+    // `true`, `checkDriversAndPost` returns immediately, and no
+    // EvStateFinished ever fires (test_04_reset_from_emergency_stop).
+    dynamic_cast<SmRobot &>(this->getStateMachine()).beginInitialization();
   }
 };
 
