@@ -1,0 +1,60 @@
+name: Auto-merge maintainer PRs
+
+# Triggered after each gating CI workflow completes on a pull request.
+# When the head SHA has no incomplete or failed check runs and the PR
+# was opened by cme-research, the PR is merged with a merge commit.
+#
+# Notes:
+# - Listens to workflow_run so we react to actual completion, not just
+#   PR open. With no required-checks branch protection, this is the
+#   reliable signal that "tests/builds passed".
+# - Author allowlist: cme-research only. External (open-source)
+#   contributor PRs are never auto-merged.
+# - Re-fires after every gating workflow; the API check ensures all
+#   workflows are green before merging.
+
+on:
+  workflow_run:
+    workflows: ["Build and test"]
+    types: [completed]
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  gate:
+    if: >-
+      github.event.workflow_run.event == 'pull_request' &&
+      github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Find PR and merge if all checks green
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+
+          pr=$(gh api "repos/$REPO/commits/$HEAD_SHA/pulls" \
+            --jq '[.[] | select(.state=="open" and .user.login=="cme-research" and .draft==false) | .number] | first // empty')
+          if [ -z "$pr" ]; then
+            echo "No open cme-research PR for $HEAD_SHA; skipping."
+            exit 0
+          fi
+
+          runs=$(gh api --paginate "repos/$REPO/commits/$HEAD_SHA/check-runs?per_page=100" \
+            --jq '.check_runs')
+          total=$(echo "$runs" | jq 'length')
+          incomplete=$(echo "$runs" | jq '[.[] | select(.status != "completed")] | length')
+          failed=$(echo "$runs" | jq '[.[] | select(.conclusion != "success" and .conclusion != "neutral" and .conclusion != "skipped")] | length')
+
+          echo "PR #$pr | check runs total=$total incomplete=$incomplete failed=$failed"
+          if [ "$incomplete" != "0" ] || [ "$failed" != "0" ]; then
+            echo "Not all checks green yet; waiting for next workflow_run."
+            exit 0
+          fi
+
+          echo "All green — merging PR #$pr."
+          gh pr merge --merge --repo "$REPO" "$pr"
