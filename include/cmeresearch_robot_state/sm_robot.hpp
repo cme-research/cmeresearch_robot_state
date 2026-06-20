@@ -111,7 +111,8 @@ struct SmRobot : public smacc2::SmaccStateMachineBase<SmRobot, StateInitializing
           driver_states_[topic] = msg->data;
           RCLCPP_INFO(getLogger(), "Driver [%s]: %s", topic.c_str(), msg->data.c_str());
           if (msg->data == "low_voltage" && prev != "low_voltage") {
-            RCLCPP_ERROR(getLogger(), "Low voltage on [%s] — triggering emergency stop", topic.c_str());
+            RCLCPP_ERROR(getLogger(), "Low voltage on [%s] — triggering emergency stop",
+              topic.c_str());
             publishState("emergency_stop");
             this->postEvent<EvEmergencyStop>();
           } else {
@@ -163,7 +164,8 @@ struct SmRobot : public smacc2::SmaccStateMachineBase<SmRobot, StateInitializing
     }
     for (const auto & kv : driver_states_) {
       if (kv.second == "error") {
-        RCLCPP_ERROR(getLogger(), "Driver error on [%s], staying in initializing", kv.first.c_str());
+        RCLCPP_ERROR(getLogger(), "Driver error on [%s], staying in initializing",
+            kv.first.c_str());
         publishState("driver_error");
         return;
       }
