@@ -122,20 +122,17 @@ struct SmRobot : public smacc2::SmaccStateMachineBase<SmRobot, StateInitializing
       driver_subs_.push_back(sub);
     }
 
-    // Empty driver list means there is nothing to wait for; flip to Idle
-    // immediately so RobotState publishes can flow. armInitTimeout() handles
-    // the configured-drivers case and fires EvStateFinished on timeout.
-    armInitTimeout();
-    checkDriversAndPost();
+    // First-time entry into the Initializing state on bringup.
+    beginInitialization();
   }
 
-  // Arm (or re-arm) the wall-timer that forces a transition to Idle if the
-  // configured drivers never report ready. Called once during onInitialize
-  // and again every time StateInitializing is re-entered (e.g. after Reset
-  // from EmergencyStop) — otherwise the second visit to Initializing would
-  // hang forever because the timer fired and reset() itself on the first.
+  // Arm (or re-arm) the init timeout backstop. Idempotent — cancels any
+  // previously running timer first so a reset->Initializing re-entry gets
+  // a fresh `init_timeout_sec_` window rather than firing immediately on
+  // the stale handle.
   void armInitTimeout()
   {
+    init_timeout_timer_.reset();
     if (init_timeout_sec_ <= 0.0) {
       return;
     }
@@ -162,9 +159,9 @@ struct SmRobot : public smacc2::SmaccStateMachineBase<SmRobot, StateInitializing
       });
   }
 
-  // Reset latched init state so a subsequent StateInitializing entry can
-  // make progress again. Called from StateInitializing::runtimeConfigure
-  // every time the state is entered.
+  // Reset the readiness latch, arm the timer, and immediately try to
+  // transition out. Called both from `onInitialize` (first entry) and
+  // from `StateInitializing::runtimeConfigure` (re-entry after reset).
   void beginInitialization()
   {
     initialization_complete_ = false;
@@ -239,6 +236,11 @@ struct StateInitializing : public smacc2::SmaccState<StateInitializing, SmRobot>
   static void staticConfigure() {}
   void runtimeConfigure()
   {
+    // Re-arm the timeout backstop and reset the readiness latch on every
+    // entry. Without this the Initializing state is one-shot — on a
+    // reset->Initializing re-entry, `initialization_complete_` stays
+    // `true`, `checkDriversAndPost` returns immediately, and no
+    // EvStateFinished ever fires (test_04_reset_from_emergency_stop).
     dynamic_cast<SmRobot &>(this->getStateMachine()).beginInitialization();
   }
 };

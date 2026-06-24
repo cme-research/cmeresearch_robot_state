@@ -21,10 +21,13 @@ def generate_test_description():
             executable='sm_robot_node',
             name='sm_robot',
             output='screen',
-            # The test fixture never spins up tinkerforge driver mocks, so the
-            # SM would block in Initializing for the default 30 s timeout. Drop
-            # the timeout to 0.5 s so the SM falls back to idle quickly and the
-            # rest of the state-transition tests can run.
+            # Skip driver readiness gating in unit tests by shrinking the
+            # init timeout to 0.5 s — the test fixture never spins up
+            # tinkerforge driver mocks, so the SM falls through to idle
+            # via its timeout backstop. We cannot pass an empty
+            # `driver_topics: []` here because launch_ros's parameter
+            # marshaller collapses an empty list to a tuple `()` and ROS2
+            # then rejects the parameter value type.
             parameters=[{'init_timeout_sec': 0.5}],
         ),
         launch_testing.actions.ReadyToTest(),
