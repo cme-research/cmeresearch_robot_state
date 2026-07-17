@@ -35,10 +35,9 @@ ament_target_dependencies(sm_robot_node
 add_executable(nav_status_node src/nav_status_node.cpp)
 ament_target_dependencies(nav_status_node
   rclcpp
-  rclcpp_action
-  std_msgs
   action_msgs
   nav2_msgs
+  cmeresearch_msgs
 )
 
 add_executable(system_stats_node src/system_stats_node.cpp)
