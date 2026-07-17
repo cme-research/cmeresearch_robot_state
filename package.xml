@@ -17,6 +17,9 @@
   <depend>rclcpp_action</depend>
   <depend>nav2_msgs</depend>
   <depend>cmeresearch_msgs</depend>
+  <depend>geometry_msgs</depend>
+  <depend>tf2</depend>
+  <depend>tf2_ros</depend>
   <build_depend>libboost-thread-dev</build_depend>
 
   <test_depend>ament_lint_auto</test_depend>

@@ -15,6 +15,9 @@ find_package(std_msgs REQUIRED)
 find_package(action_msgs REQUIRED)
 find_package(nav2_msgs REQUIRED)
 find_package(cmeresearch_msgs REQUIRED)
+find_package(geometry_msgs REQUIRED)
+find_package(tf2 REQUIRED)
+find_package(tf2_ros REQUIRED)
 find_package(Boost REQUIRED COMPONENTS thread)
 
 include_directories(include)
@@ -46,10 +49,19 @@ ament_target_dependencies(system_stats_node
   cmeresearch_msgs
 )
 
+add_executable(map_pose_node src/map_pose_node.cpp)
+ament_target_dependencies(map_pose_node
+  rclcpp
+  geometry_msgs
+  tf2
+  tf2_ros
+)
+
 install(TARGETS
   sm_robot_node
   nav_status_node
   system_stats_node
+  map_pose_node
   DESTINATION lib/${PROJECT_NAME}
 )
 
