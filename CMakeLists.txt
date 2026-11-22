@@ -77,6 +77,7 @@ if(BUILD_TESTING)
 
   find_package(launch_testing_ament_cmake REQUIRED)
   add_launch_test(test/test_state_transitions.py)
+  add_launch_test(test/test_telemetry_nodes.py TIMEOUT 120)
 endif()
 
 ament_package()
