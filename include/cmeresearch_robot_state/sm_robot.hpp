@@ -115,6 +115,17 @@ struct SmRobot : public smacc2::SmaccStateMachineBase<SmRobot, StateInitializing
               topic.c_str());
             publishState("emergency_stop");
             this->postEvent<EvEmergencyStop>();
+          } else if (msg->data == "disconnected" && prev != "disconnected" &&
+            initialization_complete_)
+          {
+            // A wheel driver lost its bricklet / brickd after it was ready:
+            // the robot can no longer be controlled reliably. The driver itself
+            // already reports 0 velocity; stop the robot until an operator
+            // resets (which waits for the driver to be ready again).
+            RCLCPP_ERROR(getLogger(), "Driver [%s] disconnected — triggering emergency stop",
+              topic.c_str());
+            publishState("emergency_stop");
+            this->postEvent<EvEmergencyStop>();
           } else {
             checkDriversAndPost();
           }
@@ -145,13 +156,32 @@ struct SmRobot : public smacc2::SmaccStateMachineBase<SmRobot, StateInitializing
           init_timeout_timer_.reset();
           return;
         }
+        // The backstop only forgives drivers that never reported anything
+        // (e.g. sim / test setups without stepper drivers). A driver that
+        // explicitly reports a non-ready state (connecting, disconnected,
+        // error, low_voltage) keeps the robot in Initializing — otherwise an
+        // emergency stop caused by a lost driver would be undone 30 s after a
+        // reset with the wheel still dead. It leaves as soon as that driver
+        // reports `initialized`/`idle` again (checkDriversAndPost).
+        bool reported_not_ready = false;
+        for (const auto & kv : driver_states_) {
+          if (!kv.second.empty() && kv.second != "initialized" && kv.second != "idle") {
+            reported_not_ready = true;
+          }
+        }
         RCLCPP_WARN(getLogger(),
-          "Init timeout (%.1fs) reached before all drivers reported ready — "
-          "forcing transition to idle. Driver states:", init_timeout_sec_);
+          "Init timeout (%.1fs) reached before all drivers reported ready — %s. "
+          "Driver states:", init_timeout_sec_,
+          reported_not_ready ? "staying in initializing (a driver reports a fault)" :
+          "forcing transition to idle");
         for (const auto & kv : driver_states_) {
           RCLCPP_WARN(getLogger(), "  %s = '%s'",
             kv.first.c_str(),
             kv.second.empty() ? "<no message>" : kv.second.c_str());
+        }
+        init_timeout_timer_.reset();
+        if (reported_not_ready) {
+          return;
         }
         initialization_complete_ = true;
         this->postEvent<EvStateFinished>();
