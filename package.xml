@@ -27,6 +27,10 @@
   <test_depend>launch_testing_ament_cmake</test_depend>
   <test_depend>launch_ros</test_depend>
   <test_depend>python3-pytest</test_depend>
+  <test_depend>rclpy</test_depend>
+  <test_depend>launch_testing</test_depend>
+  <!-- Python tf2_ros (StaticTransformBroadcaster) used by test_telemetry_nodes.py -->
+  <test_depend>tf2_ros_py</test_depend>
 
   <export>
     <build_type>ament_cmake</build_type>

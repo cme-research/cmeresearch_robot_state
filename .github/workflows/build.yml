@@ -24,4 +24,12 @@ jobs:
           skip-tests: false
           rosdep-check: false
           package-name: cmeresearch_msgs cmeresearch_robot_state
+          # Run real tests; ament linters (ctest label / pytest marker "linter") are excluded.
+          colcon-defaults: |
+            {
+              "test": {
+                "ctest-args": ["-LE", "linter"],
+                "pytest-args": ["-m", "not linter"]
+              }
+            }
           vcs-repo-file-url: https://raw.githubusercontent.com/cme-research/cmeresearch_robot_state/${{ github.head_ref || github.ref_name }}/.ci.repos
